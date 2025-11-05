@@ -59,18 +59,25 @@ async fn throttle_host(host: &str, throttle_duration_ms: u64) -> Result<(), Box<
     let mut wait_duration = Duration::from_secs(0);
     let now = Instant::now();
 
-    {
-        let mut last_scheduled_start = HOST_TIMESTAMPS
-            .entry(host.to_string()) 
-            .or_insert(now);
+    let wait_duration = {
+        //Fast path, no new String
+        if let Some(mut entry) = HOST_TIMESTAMPS.get_mut(host) {
+            let start_time = now.max(*entry);
+            let new_start = start_time + required_delay;
+            *entry = new_start; 
+            start_time.duration_since(now) 
+        } else {
+            //Slow path, need to .to_string()
+            let mut entry = HOST_TIMESTAMPS
+                .entry(host.to_string()) // Allocate *only* on this miss
+                .or_insert(now);
 
-        let start_time = now.max(*last_scheduled_start);
-        wait_duration = start_time.duration_since(now);
-
-        let new_scheduled_start = start_time + required_delay;
-        *last_scheduled_start = new_scheduled_start;
-
-    } 
+            let start_time = now.max(*entry);
+            let new_start = start_time + required_delay;
+            *entry = new_start;
+            start_time.duration_since(now) 
+        }
+    }; 
 
     if !wait_duration.is_zero() {
         println!(

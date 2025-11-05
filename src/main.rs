@@ -1,17 +1,18 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
+
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
 use tokio::time::Instant;
+
 use once_cell::sync::Lazy;
 use url::Url; 
+use dashmap::DashMap;
 use clap::Parser;
 
 
-static HOST_TIMESTAMPS: Lazy<Mutex<HashMap<String, Instant>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static HOST_TIMESTAMPS: Lazy<DashMap<String, Instant>> =
+    Lazy::new(DashMap::new);
 
 
 //Forward proxy to throttle number of concurrent requests to the same host
@@ -58,26 +59,27 @@ async fn throttle_host(host: &str, throttle_duration_ms: u64) -> Result<(), Box<
     let mut wait_duration = Duration::from_secs(0);
     let now = Instant::now();
 
-    { 
-        let mut timestamps = HOST_TIMESTAMPS.lock().await;
-        let last_access_mut = timestamps.entry(host.to_string()).or_insert(now);
+    {
+        let mut last_scheduled_start = HOST_TIMESTAMPS
+            .entry(host.to_string()) 
+            .or_insert(now);
 
-        if *last_access_mut != now { 
-            let elapsed = now.duration_since(*last_access_mut);
-            if elapsed < required_delay {
-                wait_duration = required_delay - elapsed;
-            }
-        }
-        *last_access_mut = now + wait_duration;
+        let start_time = now.max(*last_scheduled_start);
+        wait_duration = start_time.duration_since(now);
 
-        if !wait_duration.is_zero() {
-            println!(
-                "Throttling request to {}. Waiting for {:?}",
-                host, wait_duration
-            );
-            tokio::time::sleep(wait_duration).await;
-        }
+        let new_scheduled_start = start_time + required_delay;
+        *last_scheduled_start = new_scheduled_start;
+
+    } 
+
+    if !wait_duration.is_zero() {
+        println!(
+            "Throttling request to {}. Waiting for {:?}",
+            host, wait_duration
+        );
+        tokio::time::sleep(wait_duration).await;
     }
+
     Ok(())
 }
 

@@ -17,40 +17,44 @@ static HOST_TIMESTAMPS: Lazy<Mutex<HashMap<String, Instant>>> =
 //Forward proxy to throttle number of concurrent requests to the same host
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-pub struct Configuration {
+pub struct Args {
 
     //IP address to start the proxy at
-    #[arg(short, long, default_value_t = "127.0.0.1")]
+    #[arg(short, long, default_value = "127.0.0.1")]
     ip: String,
 
     //Port for the proxy server
-    #[arg(short, long, default_value_t = 8989]
+    #[arg(short, long, default_value_t = 8989)]
     port: u16,
 
     //Duration to wait between requests to the same host in ms
-    #[arg(short, long, default_value_t = 500]
-    throttle_duration_ms: 500
+    #[arg(short, long, default_value_t = 500)]
+    throttle_duration_ms: u64
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let listener = TcpListener::bind("127.0.0.1:4242").await?;
-    println!("Proxy listening on 127.0.0.1:4242 (HTTP + HTTPS)");
+    let args = Args::parse();
+    let server_address = format!("{}:{}", args.ip, args.port); 
+    let throttling_throughput = 1000.0 / args.throttle_duration_ms as f64;
+
+    let listener = TcpListener::bind(server_address.clone()).await?;
+    println!("Proxy listening on {} (HTTP + HTTPS); Throttling to {:.2} requests/second", server_address, throttling_throughput);
 
     loop {
         let (client_stream, client_addr) = listener.accept().await?;
         println!("Accepted connection from: {}", client_addr);
 
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(client_stream).await {
+            if let Err(e) = handle_connection(client_stream, args.throttle_duration_ms).await {
                 eprintln!("Failed to handle connection: {}", e);
             }
         });
     }
 }
 
-async fn throttle_host(host: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let required_delay = Duration::from_millis(1000);
+async fn throttle_host(host: &str, throttle_duration_ms: u64) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let required_delay = Duration::from_millis(throttle_duration_ms);
     let mut wait_duration = Duration::from_secs(0);
     let now = Instant::now();
 
@@ -79,6 +83,7 @@ async fn throttle_host(host: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
 
 async fn handle_connection(
     client_stream: TcpStream,
+    throttle_duration_ms: u64
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut client_stream_reader = BufReader::new(client_stream);
 
@@ -99,7 +104,7 @@ async fn handle_connection(
             let host = parts[1];
             println!("Handling CONNECT request to: {}", host);
 
-            throttle_host(host).await?;
+            throttle_host(host, throttle_duration_ms).await?;
 
             loop {
                 let mut line = String::new();
@@ -131,7 +136,7 @@ async fn handle_connection(
             let target_port = url.port_or_known_default().unwrap_or(80);
             let target_addr = format!("{}:{}", target_host, target_port);
 
-            throttle_host(&target_addr).await?;
+            throttle_host(&target_addr, throttle_duration_ms).await?;
 
             println!("Connecting to target: {}", target_addr);
             let mut target_stream = TcpStream::connect(&target_addr).await?;

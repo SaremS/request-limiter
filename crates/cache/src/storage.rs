@@ -5,9 +5,9 @@ use dashmap::DashMap;
 
 #[async_trait]
 pub trait CacheStorage {
-    async fn put(&mut self, key: &str, value: &[u8]);
+    async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()>;
     async fn get(&self, key: &str) -> Option<Vec<u8>>;
-    async fn delete(&mut self, key: &str);
+    async fn delete(&mut self, key: &str) -> Result<(), ()>;
 }
 
 #[derive(Debug)]
@@ -31,14 +31,16 @@ impl Default for InMemoryStorage {
 
 #[async_trait]
 impl CacheStorage for InMemoryStorage {
-    async fn put(&mut self, key: &str, value: &[u8]) {
+    async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
         self.storage.insert(key.to_string(), value.to_vec());        
+        return Ok(());
     }
     async fn get(&self, key: &str) -> Option<Vec<u8>> {
         self.storage.get(key).map(|v| v.value().clone())
     }
-    async fn delete(&mut self, key: &str) {
+    async fn delete(&mut self, key: &str) -> Result<(), ()> {
         self.storage.remove(key);
+        return Ok(());
     }
 }
 

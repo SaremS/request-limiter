@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use dashmap::DashSet;
 
 mod storage;
 use storage::{CacheStorage, InMemoryStorage};
@@ -8,18 +8,22 @@ use storage::{CacheStorage, InMemoryStorage};
 pub struct Cache<T: CacheStorage> {
     size: usize,
     ttl_seconds: usize,
-    cache: HashMap<String, T>,
+    set: DashSet<String>,
+    storage: T
 }
 
-impl<T: CacheStorage> Cache<T> {
-	pub fn new(size: &usize, ttl_seconds: &usize) -> Cache<T> {
+impl Cache<InMemoryStorage> {
+   pub fn new(size: &usize, ttl_seconds: &usize) -> Cache<InMemoryStorage> {
         Cache { 
             size: *size, 
             ttl_seconds: *ttl_seconds,
-            cache: HashMap::new(),
+            set: DashSet::new(),
+            storage: InMemoryStorage::new(),
         }
-    }
+    } 
+}
 
+impl<T: CacheStorage> Cache<T> {
     pub fn get_size(&self) -> usize {
         self.size
     }

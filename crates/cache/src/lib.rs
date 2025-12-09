@@ -5,24 +5,23 @@ use dashmap::DashMap;
 mod storage;
 use storage::{CacheStorage, InMemoryStorage};
 
-
 #[derive(Debug)]
 pub struct Cache<T: CacheStorage> {
     size: usize,
     ttl_seconds: u64,
     key_and_evict_map: DashMap<String, u64>,
-    store: T
+    store: T,
 }
 
 impl Cache<InMemoryStorage> {
-   pub fn new(size: &usize, ttl_seconds: &u64) -> Cache<InMemoryStorage> {
-        Cache { 
-            size: *size, 
+    pub fn new(size: &usize, ttl_seconds: &u64) -> Cache<InMemoryStorage> {
+        Cache {
+            size: *size,
             ttl_seconds: *ttl_seconds,
             key_and_evict_map: DashMap::new(),
             store: InMemoryStorage::new(),
         }
-    } 
+    }
 }
 
 impl<T: CacheStorage> Cache<T> {
@@ -42,7 +41,7 @@ impl<T: CacheStorage> Cache<T> {
     }
 
     pub async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
-        let now = Self::now_seconds().await; 
+        let now = Self::now_seconds().await;
         let evict_time = now + self.ttl_seconds;
         self.key_and_evict_map.insert(key.to_string(), evict_time);
         self.store.put(key, value).await
@@ -56,7 +55,7 @@ impl<T: CacheStorage> Cache<T> {
                 return self.store.get(key).await; //found and not expired
             } else {
                 self.store.delete(key).await.ok(); //expired
-                self.key_and_evict_map.remove(key); 
+                self.key_and_evict_map.remove(key);
                 return None; //found but expired
             }
         }
@@ -64,15 +63,14 @@ impl<T: CacheStorage> Cache<T> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_cache_size() {
         let cache: Cache<InMemoryStorage> = Cache::new(&10, &60);
-        assert_eq!(cache.get_size().await, 10);   
+        assert_eq!(cache.get_size().await, 10);
     }
 
     #[tokio::test]

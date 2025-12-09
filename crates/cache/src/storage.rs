@@ -32,7 +32,7 @@ impl Default for InMemoryStorage {
 #[async_trait]
 impl CacheStorage for InMemoryStorage {
     async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
-        self.storage.insert(key.to_string(), value.to_vec());        
+        self.storage.insert(key.to_string(), value.to_vec());
         return Ok(());
     }
     async fn get(&self, key: &str) -> Option<Vec<u8>> {

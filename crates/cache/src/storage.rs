@@ -121,10 +121,11 @@ mod tests {
     #[tokio::test]
     async fn test_file_storage_put_get() {
         let storage = SimpleFileStorage::new("/tmp/test_cache_storage");
-        let key = "test_key";
+        //key with some randomness to avoid collision
+        let key = format!("{}", uuid::Uuid::new_v4());
         let value = b"test_value";
-        storage.put(key, value).await.unwrap();
-        let retrieved_value = storage.get(key).await;
+        storage.put(&key, value).await.unwrap();
+        let retrieved_value = storage.get(&key).await;
         assert_eq!(retrieved_value, Some(Arc::new(value.to_vec())));
     }
 

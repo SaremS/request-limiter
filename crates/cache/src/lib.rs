@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use dashmap::DashMap;
 
 mod storage;
-use storage::{CacheStorage, InMemoryStorage};
+use storage::{CacheStorage, InMemoryStorage, SimpleFileStorage};
 
 #[derive(Debug)]
 pub struct Cache<T: CacheStorage> {
@@ -22,6 +22,17 @@ impl Cache<InMemoryStorage> {
             ttl_seconds: (*ttl_seconds).into(),
             key_and_evict_map: DashMap::new(),
             store: InMemoryStorage::new(),
+        }
+    }
+}
+
+impl Cache<SimpleFileStorage> {
+    pub fn new_file_cache(size: &usize, ttl_seconds: &u64, path: &str) -> Cache<SimpleFileStorage> {
+        Cache {
+            size: (*size).into(),
+            ttl_seconds: (*ttl_seconds).into(),
+            key_and_evict_map: DashMap::new(),
+            store: SimpleFileStorage::new(path),
         }
     }
 }

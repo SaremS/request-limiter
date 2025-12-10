@@ -7,9 +7,9 @@ use tokio::io::AsyncWriteExt;
 
 #[async_trait]
 pub trait CacheStorage {
-    async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()>;
+    async fn put(&self, key: &str, value: &[u8]) -> Result<(), ()>;
     async fn get(&self, key: &str) -> Option<Vec<u8>>;
-    async fn delete(&mut self, key: &str) -> Result<(), ()>;
+    async fn delete(&self, key: &str) -> Result<(), ()>;
 }
 
 // In-memory implementation of CacheStorage using DashMap
@@ -34,14 +34,14 @@ impl Default for InMemoryStorage {
 
 #[async_trait]
 impl CacheStorage for InMemoryStorage {
-    async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
+    async fn put(&self, key: &str, value: &[u8]) -> Result<(), ()> {
         self.storage.insert(key.to_string(), value.to_vec());
         return Ok(());
     }
     async fn get(&self, key: &str) -> Option<Vec<u8>> {
         self.storage.get(key).map(|v| v.value().clone())
     }
-    async fn delete(&mut self, key: &str) -> Result<(), ()> {
+    async fn delete(&self, key: &str) -> Result<(), ()> {
         self.storage.remove(key);
         return Ok(());
     }
@@ -68,7 +68,7 @@ impl Default for SimpleFileStorage {
 
 #[async_trait]
 impl CacheStorage for SimpleFileStorage {
-    async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
+    async fn put(&self, key: &str, value: &[u8]) -> Result<(), ()> {
         let file_path = format!("{}/{}", self.path, key);
         if let Some(parent) = std::path::Path::new(&file_path).parent() {
             fs::create_dir_all(parent).await.map_err(|_| ())?;
@@ -83,7 +83,7 @@ impl CacheStorage for SimpleFileStorage {
         fs::read(&file_path).await.ok()
     }
 
-    async fn delete(&mut self, key: &str) -> Result<(), ()> {
+    async fn delete(&self, key: &str) -> Result<(), ()> {
         let file_path = format!("{}/{}", self.path, key);
         fs::remove_file(&file_path).await.map_err(|_| ())?;
         Ok(())

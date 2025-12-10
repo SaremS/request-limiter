@@ -49,14 +49,14 @@ impl<T: CacheStorage> Cache<T> {
         self.ttl_seconds.store(*ttl_seconds, Ordering::Relaxed);
     }
 
-    pub async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
+    pub async fn put(&self, key: &str, value: &[u8]) -> Result<(), ()> {
         let now = Self::now_seconds().await;
         let evict_time = now + self.get_ttl().await;
         self.key_and_evict_map.insert(key.to_string(), evict_time);
         self.store.put(key, value).await
     }
 
-    pub async fn get(&mut self, key: &str) -> Option<Vec<u8>> {
+    pub async fn get(&self, key: &str) -> Option<Vec<u8>> {
         let now = Self::now_seconds().await;
         let evict_time_opt = self.key_and_evict_map.get(key).map(|guard| *guard);
         if let Some(evict_time) = evict_time_opt {

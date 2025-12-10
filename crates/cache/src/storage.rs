@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 #[async_trait]
 pub trait CacheStorage {
@@ -10,6 +12,7 @@ pub trait CacheStorage {
     async fn delete(&mut self, key: &str) -> Result<(), ()>;
 }
 
+// In-memory implementation of CacheStorage using DashMap
 #[derive(Debug)]
 pub struct InMemoryStorage {
     storage: Arc<DashMap<String, Vec<u8>>>,
@@ -44,6 +47,49 @@ impl CacheStorage for InMemoryStorage {
     }
 }
 
+// File-based implementation of CacheStorage could be added here
+pub struct SimpleFileStorage {
+    path: String,
+}
+
+impl SimpleFileStorage {
+    pub fn new(path: &str) -> Self {
+        SimpleFileStorage {
+            path: path.to_string(),
+        }
+    }
+}
+
+impl Default for SimpleFileStorage {
+    fn default() -> Self {
+        Self::new("cache_storage")
+    }
+}
+
+#[async_trait]
+impl CacheStorage for SimpleFileStorage {
+    async fn put(&mut self, key: &str, value: &[u8]) -> Result<(), ()> {
+        let file_path = format!("{}/{}", self.path, key);
+        if let Some(parent) = std::path::Path::new(&file_path).parent() {
+            fs::create_dir_all(parent).await.map_err(|_| ())?;
+        }
+        let mut file = fs::File::create(&file_path).await.map_err(|_| ())?;
+        file.write_all(value).await.map_err(|_| ())?;
+        Ok(())
+    }
+
+    async fn get(&self, key: &str) -> Option<Vec<u8>> {
+        let file_path = format!("{}/{}", self.path, key);
+        fs::read(&file_path).await.ok()
+    }
+
+    async fn delete(&mut self, key: &str) -> Result<(), ()> {
+        let file_path = format!("{}/{}", self.path, key);
+        fs::remove_file(&file_path).await.map_err(|_| ())?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,6 +111,27 @@ mod tests {
         let value = b"test_value";
         storage.put(key, value).await;
         storage.delete(key).await;
+        let retrieved_value = storage.get(key).await;
+        assert_eq!(retrieved_value, None);
+    }
+
+    #[tokio::test]
+    async fn test_file_storage_put_get() {
+        let mut storage = SimpleFileStorage::new("/tmp/test_cache_storage");
+        let key = "test_key";
+        let value = b"test_value";
+        storage.put(key, value).await.unwrap();
+        let retrieved_value = storage.get(key).await;
+        assert_eq!(retrieved_value, Some(value.to_vec()));
+    }
+
+    #[tokio::test]
+    async fn test_file_storage_delete() {
+        let mut storage = SimpleFileStorage::new("/tmp/test_cache_storage");
+        let key = "test_key";
+        let value = b"test_value";
+        storage.put(key, value).await.unwrap();
+        storage.delete(key).await.unwrap();
         let retrieved_value = storage.get(key).await;
         assert_eq!(retrieved_value, None);
     }

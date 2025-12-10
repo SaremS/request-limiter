@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::SystemTime;
 
@@ -26,18 +27,18 @@ impl Cache<InMemoryStorage> {
 }
 
 impl<T: CacheStorage> Cache<T> {
-    pub async fn get_size(&self) -> usize {
+    pub fn get_size(&self) -> usize {
         self.size.load(Ordering::Relaxed)
     }
 
-    async fn now_seconds() -> u64 {
+    fn now_seconds() -> u64 {
         SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs()
     }
 
-    pub async fn get_ttl(&self) -> u64 {
+    pub fn get_ttl(&self) -> u64 {
         self.ttl_seconds.load(Ordering::Relaxed)
     }
 
@@ -50,18 +51,18 @@ impl<T: CacheStorage> Cache<T> {
     }
 
     pub async fn put(&self, key: &str, value: &[u8]) -> Result<(), ()> {
-        let now = Self::now_seconds().await;
-        let evict_time = now + self.get_ttl().await;
+        let now = Self::now_seconds();
+        let evict_time = now + self.get_ttl();
         self.key_and_evict_map.insert(key.to_string(), evict_time);
         self.store.put(key, value).await
     }
 
-    pub async fn get(&self, key: &str) -> Option<Vec<u8>> {
-        let now = Self::now_seconds().await;
+    pub async fn get(&self, key: &str) -> Option<Arc<Vec<u8>>> {
+        let now = Self::now_seconds();
         let evict_time_opt = self.key_and_evict_map.get(key).map(|guard| *guard);
         if let Some(evict_time) = evict_time_opt {
             if evict_time > now {
-                return self.store.get(key).await; //found and not expired
+                return self.store.get(key).await; //found and valid
             } else {
                 self.store.delete(key).await.ok(); //expired
                 self.key_and_evict_map.remove(key);
@@ -79,30 +80,29 @@ mod tests {
     #[tokio::test]
     async fn test_cache_size() {
         let cache: Cache<InMemoryStorage> = Cache::new(&10, &60);
-        assert_eq!(cache.get_size().await, 10);
+        assert_eq!(cache.get_size(), 10);
     }
 
     #[tokio::test]
     async fn test_cache_size_zero() {
         let cache: Cache<InMemoryStorage> = Cache::new(&0, &60);
-        assert_eq!(cache.get_size().await, 0);
+        assert_eq!(cache.get_size(), 0);
     }
 
     #[tokio::test]
     async fn test_put_get() {
-        let mut cache: Cache<InMemoryStorage> = Cache::new(&10, &60);
+        let cache: Cache<InMemoryStorage> = Cache::new(&10, &60);
         let key = "test_key";
         let value = b"test_value";
 
         cache.put(key, value).await.unwrap();
         let retrieved_value = cache.get(key).await;
-
-        assert_eq!(retrieved_value, Some(value.to_vec()));
+        assert_eq!(retrieved_value, Some(Arc::new(value.to_vec())));
     }
 
     #[tokio::test]
     async fn test_get_expired() {
-        let mut cache: Cache<InMemoryStorage> = Cache::new(&10, &1); // 1 second TTL
+        let cache: Cache<InMemoryStorage> = Cache::new(&10, &1); // 1 second TTL
         let key = "test_key";
         let value = b"test_value";
         cache.put(key, value).await.unwrap();

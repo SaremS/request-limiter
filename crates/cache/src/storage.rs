@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 #[async_trait]
 pub trait CacheStorage {
     async fn put(&self, key: &str, value: &[u8]) -> Result<(), ()>;
-    async fn get(&self, key: &str) -> Option<Vec<u8>>;
+    async fn get(&self, key: &str) -> Option<Arc<Vec<u8>>>;
     async fn delete(&self, key: &str) -> Result<(), ()>;
 }
 
@@ -38,8 +38,8 @@ impl CacheStorage for InMemoryStorage {
         self.storage.insert(key.to_string(), value.to_vec());
         return Ok(());
     }
-    async fn get(&self, key: &str) -> Option<Vec<u8>> {
-        self.storage.get(key).map(|v| v.value().clone())
+    async fn get(&self, key: &str) -> Option<Arc<Vec<u8>>> {
+        self.storage.get(key).map(|v| Arc::new(v.value().clone()))
     }
     async fn delete(&self, key: &str) -> Result<(), ()> {
         self.storage.remove(key);
@@ -78,9 +78,12 @@ impl CacheStorage for SimpleFileStorage {
         Ok(())
     }
 
-    async fn get(&self, key: &str) -> Option<Vec<u8>> {
+    async fn get(&self, key: &str) -> Option<Arc<Vec<u8>>> {
         let file_path = format!("{}/{}", self.path, key);
-        fs::read(&file_path).await.ok()
+        match fs::read(&file_path).await {
+            Ok(data) => Some(Arc::new(data)),
+            Err(_) => None,
+        }
     }
 
     async fn delete(&self, key: &str) -> Result<(), ()> {
@@ -101,12 +104,12 @@ mod tests {
         let value = b"test_value";
         storage.put(key, value).await;
         let retrieved_value = storage.get(key).await;
-        assert_eq!(retrieved_value, Some(value.to_vec()));
+        assert_eq!(retrieved_value, Some(Arc::new(value.to_vec())));
     }
 
     #[tokio::test]
     async fn test_in_memory_storage_delete() {
-        let mut storage = InMemoryStorage::new();
+        let storage = InMemoryStorage::new();
         let key = "test_key";
         let value = b"test_value";
         storage.put(key, value).await;
@@ -117,17 +120,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_storage_put_get() {
-        let mut storage = SimpleFileStorage::new("/tmp/test_cache_storage");
+        let storage = SimpleFileStorage::new("/tmp/test_cache_storage");
         let key = "test_key";
         let value = b"test_value";
         storage.put(key, value).await.unwrap();
         let retrieved_value = storage.get(key).await;
-        assert_eq!(retrieved_value, Some(value.to_vec()));
+        assert_eq!(retrieved_value, Some(Arc::new(value.to_vec())));
     }
 
     #[tokio::test]
     async fn test_file_storage_delete() {
-        let mut storage = SimpleFileStorage::new("/tmp/test_cache_storage");
+        let storage = SimpleFileStorage::new("/tmp/test_cache_storage");
         let key = "test_key";
         let value = b"test_value";
         storage.put(key, value).await.unwrap();

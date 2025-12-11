@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use dashmap::DashMap;
 
-mod storage;
+pub mod storage;
 use storage::{CacheStorage, InMemoryStorage, SimpleFileStorage};
 
 #[derive(Debug)]

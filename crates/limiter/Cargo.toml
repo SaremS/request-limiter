@@ -7,7 +7,12 @@ edition = "2024"
 dead_code = "allow"
 unused_imports = "allow"
 
+[lints.clippy]
+trim_split_whitespace = "allow"
+
 [dependencies]
 async-trait = "0.1.89"
 cache = { path = "../cache" }
 throttle = { path = "../throttle" }
+tokio = { version = "1.48.0", features = ["full"] }
+tracing = "0.1.43"
